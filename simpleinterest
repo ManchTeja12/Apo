@@ -1,0 +1,197 @@
+package com.saveetha.interest
+
+import android.annotation.SuppressLint
+import android.app.DatePickerDialog
+import android.app.Dialog
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import com.saveetha.interest.models.SimpleInterestResponse
+import com.saveetha.interest.network.ApiClient
+import com.saveetha.interest.network.ApiService
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import java.text.SimpleDateFormat
+import java.util.*
+
+class SimpleInterestActivity : AppCompatActivity() {
+
+    private lateinit var edtPrincipalAmount: EditText
+    private lateinit var edtInterestRate: EditText
+    private lateinit var edtFromDate: EditText
+    private lateinit var edtToDate: EditText
+    private lateinit var btnCalculate: Button
+    private lateinit var btnSaveCalculation: Button
+    private lateinit var btnReset: Button
+    private lateinit var tvInterestAmount: TextView
+    private lateinit var tvInterestRate: TextView
+    private lateinit var tvInterestTime: TextView
+    private lateinit var tvTotalAmount: TextView
+
+    private var from_Date: String = ""
+    private var To_Date: String = ""
+    private var interestAmount = 0.0
+    private var totalAmount = 0.0
+
+    private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+    private val TAG = "SimpleInterestActivity"
+
+    @SuppressLint("MissingInflatedId")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_simple_interest)
+
+        edtPrincipalAmount = findViewById(R.id.edtPrincipalAmount)
+        edtInterestRate = findViewById(R.id.edtInterest_Rate)
+        edtFromDate = findViewById(R.id.edtFromDate)
+        edtToDate = findViewById(R.id.edtToDate)
+        btnCalculate = findViewById(R.id.btnCalculate)
+        btnSaveCalculation = findViewById(R.id.btnSave)
+        btnReset = findViewById(R.id.btnReset)// ADD this button in your XML
+
+        tvInterestAmount = findViewById(R.id.tvInterestAmount)
+        tvInterestRate = findViewById(R.id.tvInterestRate)
+        tvInterestTime = findViewById(R.id.tvInteresttime)
+        tvTotalAmount = findViewById(R.id.tvTotalAmount)
+
+        edtFromDate.isFocusable = false
+        edtFromDate.setOnClickListener { showDatePicker(true) }
+
+        edtToDate.isFocusable = false
+        edtToDate.setOnClickListener { showDatePicker(false) }
+
+        btnCalculate.setOnClickListener { calculateInterest() }
+
+        btnSaveCalculation.setOnClickListener {
+            showSaveDialog()
+        }
+        btnReset.setOnClickListener { resetFields() }
+    }
+
+    private fun showDatePicker(isFromDate: Boolean) {
+        val calendar = Calendar.getInstance()
+        val dpd = DatePickerDialog(this, { _, year, month, day ->
+            val selectedDate = Calendar.getInstance()
+            selectedDate.set(year, month, day)
+            val formattedDate = dateFormat.format(selectedDate.time)
+
+            if (isFromDate) {
+                from_Date = formattedDate
+                edtFromDate.setText(formattedDate)
+            } else {
+                To_Date = formattedDate
+                edtToDate.setText(formattedDate)
+            }
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+
+        dpd.show()
+    }
+
+    private fun calculateInterest() {
+        val principalText = edtPrincipalAmount.text.toString().trim()
+        val rateText = edtInterestRate.text.toString().trim()
+
+        if (principalText.isEmpty() || rateText.isEmpty() || from_Date.isEmpty() || To_Date.isEmpty()) {
+            Toast.makeText(this, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val principal = principalText.toDoubleOrNull()
+        val rate = rateText.toDoubleOrNull()
+
+        if (principal == null || principal <= 0) {
+            Toast.makeText(this, "Invalid principal amount", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (rate == null || rate <= 0) {
+            Toast.makeText(this, "Invalid interest rate", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val apiService = ApiClient.getClient().create(ApiService::class.java)
+        val call = apiService.calculateSimpleInterest(principal, rate, from_Date, To_Date)
+        Log.d(TAG, "Sending: $principal, $rate, $from_Date, $To_Date")
+        call.enqueue(object : Callback<SimpleInterestResponse> {
+            override fun onResponse(call: Call<SimpleInterestResponse>, response: Response<SimpleInterestResponse>) {
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null && body.status == 200) {
+                        interestAmount = body.simple_interest
+                        totalAmount = body.Total_Amount
+
+                        tvInterestAmount.text = "Interest Earned: ₹%.2f".format(interestAmount)
+                        tvInterestRate.text = "Interest Rate: %.2f%%".format(body.Interest_Rate)
+                        tvInterestTime.text = "Time Period: ${body.Time_Period} (%.4f years)".format(body.Total_Years)
+                        tvTotalAmount.text = "Total Amount: ₹%.2f".format(totalAmount)
+
+                        Toast.makeText(this@SimpleInterestActivity, "Calculation done!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@SimpleInterestActivity, "Error: ${body?.message ?: "Unknown"}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this@SimpleInterestActivity, "Server error: ${response.code()}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onFailure(call: Call<SimpleInterestResponse>, t: Throwable) {
+                Toast.makeText(this@SimpleInterestActivity, "Network error: ${t.message}", Toast.LENGTH_LONG).show()
+            }
+        })
+    }
+
+    @SuppressLint("MissingInflatedId")
+    private fun showSaveDialog() {
+        val dialog = Dialog(this)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_save_borrower, null)
+        dialog.setContentView(view)
+
+        val etBorrowerName = view.findViewById<EditText>(R.id.etBorrowerName)
+        val cbAddToBook = view.findViewById<CheckBox>(R.id.cbAddToBook)
+        val btnCancel = view.findViewById<Button>(R.id.btnCancel)
+        val btnSave = view.findViewById<Button>(R.id.btnSave)
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        btnSave.setOnClickListener {
+            val name = etBorrowerName.text.toString().trim()
+            val addToBook = cbAddToBook.isChecked
+
+            if (name.isEmpty()) {
+                Toast.makeText(this, "Please enter borrower name", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // You can handle saving here — like database, API call, or shared preferences
+            Toast.makeText(this, "Saved for $name (Add to book: $addToBook)", Toast.LENGTH_LONG).show()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85).toInt(),
+            LinearLayout.LayoutParams.WRAP_CONTENT)
+    }
+    private fun resetFields() {
+        edtPrincipalAmount.text.clear()
+        edtInterestRate.text.clear()
+        edtFromDate.text.clear()
+        edtToDate.text.clear()
+
+        from_Date = ""
+        To_Date = ""
+
+        tvInterestAmount.text = ""
+        tvInterestRate.text = ""
+        tvInterestTime.text = ""
+        tvTotalAmount.text = ""
+
+        Toast.makeText(this, "Fields reset", Toast.LENGTH_SHORT).show()
+    }
+
+}
