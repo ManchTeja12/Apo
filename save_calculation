@@ -1,0 +1,57 @@
+package com.saveetha.interest
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.widget.*
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+
+class SaveCalculation : AppCompatActivity() {
+
+    lateinit var showDialogButton: Button
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_save_calculation)  // Main layout
+
+        showDialogButton = findViewById(R.id.showDialogButton)
+
+        showDialogButton.setOnClickListener {
+            showSaveDialog()
+        }
+    }
+
+    private fun showSaveDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_save_borrower, null)
+
+        val borrowerNameEditText = dialogView.findViewById<EditText>(R.id.etBorrowerName)
+        val addToBookCheckbox = dialogView.findViewById<CheckBox>(R.id.cbAddToBook)
+        val cancelButton = dialogView.findViewById<Button>(R.id.btnCancel)
+        val saveButton = dialogView.findViewById<Button>(R.id.btnSave)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        saveButton.setOnClickListener {
+            val borrowerName = borrowerNameEditText.text.toString().trim()
+            val isChecked = addToBookCheckbox.isChecked
+
+            if (borrowerName.isEmpty()) {
+                Toast.makeText(this, "Please enter Borrower Name", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // You can save the data here or pass it to another screen
+            Toast.makeText(this, "Saved: $borrowerName, AddToBook: $isChecked", Toast.LENGTH_LONG).show()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+}
