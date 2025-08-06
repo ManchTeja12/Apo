@@ -1,0 +1,183 @@
+package com.saveetha.interest
+
+import android.animation.ValueAnimator
+import android.content.Intent
+import android.graphics.drawable.RotateDrawable
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+
+class PrivacyPolicyActivity : AppCompatActivity() {
+
+    // Section pairs (title, content)
+    private val sectionPairs = mutableListOf<Pair<TextView, TextView>>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_privacypolicy)
+
+        setupCollapsibleSections()
+        setupPdfDownloadButton()
+    }
+
+    private fun setupCollapsibleSections() {
+        // Initialize section pairs
+        sectionPairs.addAll(listOf(
+            Pair(findViewById(R.id.tvInfoTitle), findViewById(R.id.tvInfoContent)),
+            Pair(findViewById(R.id.tvUseTitle), findViewById(R.id.tvUseContent)),
+            Pair(findViewById(R.id.tvCookiesTitle), findViewById(R.id.tvCookiesContent)),
+            Pair(findViewById(R.id.tvSecurityTitle), findViewById(R.id.tvSecurityContent)),
+            Pair(findViewById(R.id.tvRightsTitle), findViewById(R.id.tvRightsContent)),
+            Pair(findViewById(R.id.tvContactTitle), findViewById(R.id.tvContactContent))
+        ))
+
+        // Set click listeners for all section headers
+        sectionPairs.forEach { (titleView, contentView) ->
+            titleView.setOnClickListener {
+                toggleSection(titleView, contentView)
+            }
+
+            // Add initial highlight effect
+            setupInitialState(titleView, contentView)
+        }
+    }
+
+    private fun setupInitialState(titleView: TextView, contentView: TextView) {
+        // Set initial drawable rotation state
+        val drawable = ContextCompat.getDrawable(this, R.drawable.ic_expand_more)
+        drawable?.let {
+            titleView.setCompoundDrawablesWithIntrinsicBounds(null, null, it, null)
+        }
+    }
+
+    private fun toggleSection(titleView: TextView, contentView: TextView) {
+        val isExpanded = contentView.visibility == View.VISIBLE
+
+        if (isExpanded) {
+            // Collapse section
+            collapseView(contentView)
+            animateArrow(titleView, false)
+            removeHighlight(titleView)
+        } else {
+            // Collapse all other sections first
+            collapseAllSections()
+
+            // Expand current section
+            expandView(contentView)
+            animateArrow(titleView, true)
+            highlightSection(titleView)
+        }
+    }
+
+    private fun expandView(view: View) {
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(view.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val targetHeight = view.measuredHeight
+
+        view.layoutParams.height = 0
+        view.visibility = View.VISIBLE
+
+        val animator = ValueAnimator.ofInt(0, targetHeight)
+        animator.addUpdateListener { animation ->
+            val value = animation.animatedValue as Int
+            view.layoutParams.height = value
+            view.requestLayout()
+        }
+        animator.duration = 300
+        animator.start()
+    }
+
+    private fun collapseView(view: View) {
+        val initialHeight = view.measuredHeight
+
+        val animator = ValueAnimator.ofInt(initialHeight, 0)
+        animator.addUpdateListener { animation ->
+            val value = animation.animatedValue as Int
+            view.layoutParams.height = value
+            view.requestLayout()
+
+            if (value == 0) {
+                view.visibility = View.GONE
+            }
+        }
+        animator.duration = 300
+        animator.start()
+    }
+
+    private fun collapseAllSections() {
+        sectionPairs.forEach { (titleView, contentView) ->
+            if (contentView.visibility == View.VISIBLE) {
+                collapseView(contentView)
+                animateArrow(titleView, false)
+                removeHighlight(titleView)
+            }
+        }
+    }
+
+    private fun highlightSection(titleView: TextView) {
+        // Change background color to highlight
+        titleView.setBackgroundColor(ContextCompat.getColor(this, R.color.section_highlighted))
+
+        // Add subtle elevation
+        ViewCompat.setElevation(titleView, 8f)
+
+        // Optional: Add border or different styling
+        titleView.setPadding(16, 12, 12, 12) // Add more left padding when highlighted
+    }
+
+    private fun removeHighlight(titleView: TextView) {
+        // Restore original background
+        titleView.setBackgroundResource(R.drawable.section_header_background)
+
+        // Remove elevation
+        ViewCompat.setElevation(titleView, 0f)
+
+        // Restore original padding
+        titleView.setPadding(12, 12, 12, 12)
+    }
+
+    private fun animateArrow(titleView: TextView, expand: Boolean) {
+        val drawable = if (expand) {
+            ContextCompat.getDrawable(this, R.drawable.ic_expand_less)
+        } else {
+            ContextCompat.getDrawable(this, R.drawable.ic_expand_more)
+        }
+
+        drawable?.let {
+            titleView.setCompoundDrawablesWithIntrinsicBounds(null, null, it, null)
+        }
+    }
+
+    private fun setupPdfDownloadButton() {
+        val btnDownloadPdf = findViewById<View>(R.id.btnDownloadPdf)
+        btnDownloadPdf.setOnClickListener {
+            // Show toast for now - implement actual PDF download logic
+            Toast.makeText(this, "PDF download feature coming soon!", Toast.LENGTH_SHORT).show()
+
+            // Optional: Open privacy policy URL in browser
+            // openPrivacyPolicyUrl()
+        }
+    }
+
+    private fun openPrivacyPolicyUrl() {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.calculator.com/privacy"))
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to open privacy policy URL", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onBackPressed() {
+        super.onBackPressed()
+        // Optional: Add slide out animation
+        overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
+    }
+}
