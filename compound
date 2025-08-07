@@ -1,0 +1,323 @@
+package com.saveetha.interest
+
+import android.annotation.SuppressLint
+import android.app.DatePickerDialog
+import android.app.Dialog
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import com.saveetha.interest.models.CompoundInterestResponse
+import com.saveetha.interest.network.ApiClient
+import com.saveetha.interest.network.ApiService
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import java.util.*
+
+class CompoundInterestActivity : AppCompatActivity() {
+
+    private lateinit var edtPrincipal: EditText
+    private lateinit var edtRate: EditText
+    private lateinit var edtFromDate: EditText // Changed from TextView to EditText
+    private lateinit var edtToDate: EditText   // Changed from TextView to EditText
+    private lateinit var spinnerFrequency: Spinner
+    private lateinit var btnCalculate: Button
+    private lateinit var btnSaveCalculation: Button
+    private lateinit var btnSetReminder: Button
+    private lateinit var btnReset: Button
+
+    private lateinit var tvResultTitle: LinearLayout // Changed to LinearLayout as per XML
+    private lateinit var tvPrincipalResult: TextView
+    private lateinit var tvRateResult: TextView
+    private lateinit var tvDurationResult: TextView
+    private lateinit var tvFrequencyResult: TextView
+    private lateinit var tvCompoundInterestResult: TextView
+    private lateinit var tvFinalAmountResult: TextView
+
+    private var fromDate: String = ""
+    private var toDate: String = ""
+
+    @SuppressLint("MissingInflatedId")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_compound)
+
+        try {
+            // Initialize views
+            edtPrincipal = findViewById(R.id.edtPrincipal)
+            edtRate = findViewById(R.id.edtRate)
+            edtFromDate = findViewById(R.id.edtFromDate) // Correct ID from XML
+            edtToDate = findViewById(R.id.edtToDate)     // Correct ID from XML
+            spinnerFrequency = findViewById(R.id.spinnerFrequency)
+            btnCalculate = findViewById(R.id.btnCalculate)
+            btnSaveCalculation = findViewById(R.id.btnSave)
+            btnSetReminder = findViewById(R.id.btnSetReminder)
+            btnReset = findViewById(R.id.btnReset)
+
+            tvResultTitle = findViewById(R.id.tvResultTitle) // This is LinearLayout in XML
+            tvPrincipalResult = findViewById(R.id.tvPrincipalResult)
+            tvRateResult = findViewById(R.id.tvRateResult)
+            tvDurationResult = findViewById(R.id.tvDurationResult)
+            tvFrequencyResult = findViewById(R.id.tvFrequencyResult)
+            tvCompoundInterestResult = findViewById(R.id.tvCompoundInterestResult)
+            tvFinalAmountResult = findViewById(R.id.tvFinalAmountResult)
+
+            // Hide result views initially
+            hideResultViews()
+
+            // Set up date pickers
+            edtFromDate.setOnClickListener {
+                showDatePicker { date ->
+                    fromDate = date
+                    edtFromDate.setText(date)
+                }
+            }
+
+            edtToDate.setOnClickListener {
+                showDatePicker { date ->
+                    toDate = date
+                    edtToDate.setText(date)
+                }
+            }
+
+            // Setup spinner
+            setupSpinner()
+
+            // Set button click listeners
+            btnCalculate.setOnClickListener {
+                calculateCompoundInterest()
+            }
+
+            btnSaveCalculation.setOnClickListener {
+                showSaveDialog()
+            }
+
+            btnSetReminder.setOnClickListener {
+                // TODO: Implement reminder functionality
+                Toast.makeText(this, "Reminder feature coming soon!", Toast.LENGTH_SHORT).show()
+            }
+
+            btnReset.setOnClickListener {
+                resetFields()
+            }
+
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error in onCreate: ${e.message}")
+            Toast.makeText(this, "Error initializing app: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun setupSpinner() {
+        try {
+            val frequencies = resources.getStringArray(R.array.frequency_options)
+            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, frequencies)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinnerFrequency.adapter = adapter
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error setting up spinner: ${e.message}")
+            // Fallback if resource array doesn't exist
+            val defaultFrequencies = arrayOf("Yearly", "Half-Yearly", "Quarterly", "Monthly")
+            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, defaultFrequencies)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinnerFrequency.adapter = adapter
+        }
+    }
+
+    private fun hideResultViews() {
+        tvResultTitle.visibility = View.GONE
+    }
+
+    private fun showResultViews() {
+        tvResultTitle.visibility = View.VISIBLE
+    }
+
+    private fun showDatePicker(onDateSet: (String) -> Unit) {
+        try {
+            val calendar = Calendar.getInstance()
+            val datePicker = DatePickerDialog(
+                this,
+                { _, year, month, day ->
+                    val formattedDate = String.format("%02d-%02d-%04d", day, month + 1, year)
+                    onDateSet(formattedDate)
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)
+            )
+            datePicker.show()
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error showing date picker: ${e.message}")
+            Toast.makeText(this, "Error opening date picker", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun calculateCompoundInterest() {
+        try {
+            val principalText = edtPrincipal.text.toString().trim()
+            val rateText = edtRate.text.toString().trim()
+
+            val principal = principalText.toDoubleOrNull()
+            val rate = rateText.toDoubleOrNull()
+            val frequencyLabel = spinnerFrequency.selectedItem?.toString()?.trim() ?: ""
+
+            val frequency = when (frequencyLabel) {
+                "Yearly" -> "annually"
+                "Half-Yearly" -> "half-yearly"
+                "Quarterly" -> "quarterly"
+                "Monthly" -> "monthly"
+                else -> "annually"
+            }
+
+            // Validation
+            if (principal == null || principal <= 0) {
+                Toast.makeText(this, "Please enter a valid principal amount", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            if (rate == null || rate <= 0) {
+                Toast.makeText(this, "Please enter a valid interest rate", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            if (fromDate.isEmpty()) {
+                Toast.makeText(this, "Please select from date", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            if (toDate.isEmpty()) {
+                Toast.makeText(this, "Please select to date", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            // Show loading state
+            btnCalculate.text = "Calculating..."
+            btnCalculate.isEnabled = false
+
+            val apiService = ApiClient.getClient().create(ApiService::class.java)
+            val call = apiService.calculateCompoundInterest(principal, rate, fromDate, toDate, frequency)
+
+            call.enqueue(object : Callback<CompoundInterestResponse> {
+                override fun onResponse(
+                    call: Call<CompoundInterestResponse>,
+                    response: Response<CompoundInterestResponse>
+                ) {
+                    // Reset button state
+                    btnCalculate.text = "Calculate"
+                    btnCalculate.isEnabled = true
+
+                    if (response.isSuccessful && response.body() != null) {
+                        val result = response.body()!!
+                        displayResults(result)
+                    } else {
+                        Toast.makeText(
+                            this@CompoundInterestActivity,
+                            "Error: ${response.code()} - ${response.message()}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        Log.e("API_ERROR", "Response code: ${response.code()}, Message: ${response.message()}")
+                    }
+                }
+
+                override fun onFailure(call: Call<CompoundInterestResponse>, t: Throwable) {
+                    // Reset button state
+                    btnCalculate.text = "Calculate"
+                    btnCalculate.isEnabled = true
+
+                    Toast.makeText(
+                        this@CompoundInterestActivity,
+                        "Network Error: ${t.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    Log.e("API_FAILURE", "Network error: ${t.message}")
+                }
+            })
+
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error in calculateCompoundInterest: ${e.message}")
+            Toast.makeText(this, "Error performing calculation: ${e.message}", Toast.LENGTH_SHORT).show()
+
+            // Reset button state
+            btnCalculate.text = "Calculate"
+            btnCalculate.isEnabled = true
+        }
+    }
+
+    private fun displayResults(result: CompoundInterestResponse) {
+        try {
+            tvPrincipalResult.text = "₹${String.format("%.2f", result.PrincipalAmount)}"
+            tvRateResult.text = "${result.Interest_Rate}%"
+            tvDurationResult.text = "${result.Years} years, ${result.Months} months, ${result.Days} days"
+            tvFrequencyResult.text = "${result.Frequency_Per_Year} times/year"
+            tvCompoundInterestResult.text = "₹${String.format("%.2f", result.Compound_Interest)}"
+            tvFinalAmountResult.text = "₹${String.format("%.2f", result.Total_Amount)}"
+
+            showResultViews()
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error displaying results: ${e.message}")
+            Toast.makeText(this, "Error displaying results", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showSaveDialog() {
+        try {
+            val dialog = Dialog(this)
+            val view = LayoutInflater.from(this).inflate(R.layout.dialog_save_borrower, null)
+            dialog.setContentView(view)
+
+            val etBorrowerName = view.findViewById<EditText>(R.id.etBorrowerName)
+            val cbAddToBook = view.findViewById<CheckBox>(R.id.cbAddToBook)
+            val btnCancel = view.findViewById<Button>(R.id.btnCancel)
+            val btnSave = view.findViewById<Button>(R.id.btnSave)
+
+            btnCancel.setOnClickListener {
+                dialog.dismiss()
+            }
+
+            btnSave.setOnClickListener {
+                val name = etBorrowerName.text.toString().trim()
+                val addToBook = cbAddToBook.isChecked
+
+                if (name.isEmpty()) {
+                    Toast.makeText(this, "Please enter borrower name", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                // TODO: Implement actual save functionality
+                Toast.makeText(this, "Saved for $name (Add to book: $addToBook)", Toast.LENGTH_LONG).show()
+                dialog.dismiss()
+            }
+
+            dialog.show()
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.85).toInt(),
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error showing save dialog: ${e.message}")
+            Toast.makeText(this, "Error opening save dialog", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun resetFields() {
+        try {
+            edtPrincipal.text.clear()
+            edtRate.text.clear()
+            edtFromDate.setText("")
+            edtToDate.setText("")
+            fromDate = ""
+            toDate = ""
+            spinnerFrequency.setSelection(0)
+
+            // Hide result fields
+            hideResultViews()
+
+            Toast.makeText(this, "Fields reset successfully", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e("CompoundInterestActivity", "Error resetting fields: ${e.message}")
+            Toast.makeText(this, "Error resetting fields", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
