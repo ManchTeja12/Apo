@@ -1,0 +1,23 @@
+package com.saveetha.interest.models
+
+// BookEntry.kt
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "book_entries")
+data class BookEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val borrowerName: String,
+    val amount: Double,
+    val Date: String,
+    val receivedDate: String,
+    val interestRate: String,
+    val totalTime: String,
+    val interestAmount: Double,
+    val totalAmount: Double,
+    val calculationType: String // New field (e.g., "Simple Interest", "EMI", etc.)
+)
+
+
+
