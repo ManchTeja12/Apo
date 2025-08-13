@@ -1,0 +1,95 @@
+package com.saveetha.interest
+
+import android.os.Bundle
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import com.saveetha.interest.models.SavingsResponse
+import com.saveetha.interest.network.ApiService
+import com.saveetha.interest.network.ApiClient
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+
+class SavingsCalculator : AppCompatActivity() {
+
+    private lateinit var etMonthlyContribution: EditText
+    private lateinit var etTargetAmount: EditText
+    private lateinit var etInterestRate: EditText
+    private lateinit var btnCalculate: Button
+    private lateinit var tvMonthlySaving: TextView
+    private lateinit var tvTargetAmount: TextView
+    private lateinit var tvTotalMonths: TextView
+    private lateinit var tvInterestEarned: TextView
+    private lateinit var tvTotalAmountSaved: TextView
+
+    private lateinit var apiService: ApiService
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_savings_calculator)
+
+        // Initialize views
+        etMonthlyContribution = findViewById(R.id.etMonthly_Contribution)
+        etTargetAmount = findViewById(R.id.etTarget_Amount)
+        etInterestRate = findViewById(R.id.etInterest_Rate)
+        btnCalculate = findViewById(R.id.btnCalculate)
+
+        tvMonthlySaving = findViewById(R.id.tvMonthlySaving)
+        tvTargetAmount = findViewById(R.id.tvTargetAmount)
+        tvTotalMonths = findViewById(R.id.tvTotalMonths)
+        tvInterestEarned = findViewById(R.id.tvInterestEarned)
+        tvTotalAmountSaved = findViewById(R.id.tvTotalAmountSaved)
+
+        // Use ApiClient instead of creating Retrofit instance here
+        apiService = ApiClient.getClient().create(ApiService::class.java)
+
+        btnCalculate.setOnClickListener {
+            calculateSavings()
+        }
+    }
+
+    private fun calculateSavings() {
+        val targetAmount = etTargetAmount.text.toString().toDoubleOrNull()
+        val monthlyContribution = etMonthlyContribution.text.toString().toDoubleOrNull()
+        val interestRate = etInterestRate.text.toString().toDoubleOrNull()
+
+        if (targetAmount == null || monthlyContribution == null) {
+            Toast.makeText(this, "Please enter valid input values", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Show loading message
+        Toast.makeText(this, "Calculating...", Toast.LENGTH_SHORT).show()
+
+        val call = apiService.calculateSavings(
+            targetAmount = targetAmount,
+            monthlyContribution = monthlyContribution,
+            interestRate = interestRate ?: 0.0
+        )
+
+        call.enqueue(object : Callback<SavingsResponse> {
+            override fun onResponse(
+                call: Call<SavingsResponse>,
+                response: Response<SavingsResponse>
+            ) {
+                if (response.isSuccessful) {
+                    val result = response.body()
+                    result?.let {
+                        tvMonthlySaving.text = "Monthly Saving: ₹${it.Monthly_Contribution}"
+                        tvTargetAmount.text = "Target Amount: ₹${it.Target_Amount}"
+                        val duration = it.Duration
+                        tvTotalMonths.text = "Estimated Months to Goal: ${duration.Years} years ${duration.Months} months"
+                        tvInterestEarned.text = "Interest Earned: ₹${it.Interest_Earned}"
+                        tvTotalAmountSaved.text = "Total Amount Saved: ₹${it.Final_Amount}"
+                    }
+                } else {
+                    Toast.makeText(this@SavingsCalculator, "Failed: ${response.code()} - ${response.message()}", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            override fun onFailure(call: Call<SavingsResponse>, t: Throwable) {
+                Toast.makeText(this@SavingsCalculator, "Error: ${t.message}", Toast.LENGTH_LONG).show()
+            }
+        })
+    }
+}
