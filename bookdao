@@ -1,0 +1,31 @@
+package com.saveetha.interest.data
+
+// BookDao.kt
+import androidx.room.*
+import com.saveetha.interest.models.BookEntry
+
+@Dao
+interface BookDao {
+    @Insert
+    suspend fun insert(bookEntry: BookEntry)
+
+    @Query("SELECT * FROM book_entries")
+    suspend fun getAll(): List<BookEntry>
+
+    @Delete
+    suspend fun delete(bookEntry: BookEntry)
+
+    @Query("SELECT * FROM book_entries WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): BookEntry?
+
+    @Update
+    suspend fun update(bookEntry: BookEntry)
+
+    // Add this temporary method for debugging
+    @Query("SELECT COUNT(*) FROM book_entries WHERE id = :id")
+    suspend fun countById(id: Long): Int
+
+    @Query("SELECT * FROM book_entries WHERE calculationType = :type")
+    suspend fun getByType(type: String): List<BookEntry>
+
+}
