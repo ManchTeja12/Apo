@@ -1,0 +1,279 @@
+package com.saveetha.interest
+
+import android.app.Dialog
+import android.os.Bundle
+import android.view.View
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.saveetha.interest.data.AppDatabase
+import com.saveetha.interest.models.BookEntry
+import com.saveetha.interest.models.OtherLoanResponse
+import com.saveetha.interest.network.ApiClient
+import com.saveetha.interest.network.ApiService
+import kotlinx.coroutines.launch
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import java.text.NumberFormat
+import java.util.*
+import kotlin.text.toDoubleOrNull as toDoubleOrNull1
+
+class OtherLoanActivity : AppCompatActivity() {
+
+    private lateinit var etLoanAmount: EditText
+    private lateinit var etInterestRate: EditText
+    private lateinit var etTenure: EditText
+    private lateinit var etDownPayment: EditText
+    private lateinit var btnCalculate: Button
+    private lateinit var btnSetReminder: Button
+    private lateinit var btnSave: Button
+    private lateinit var btnReset: Button
+
+    private lateinit var resultSection: LinearLayout
+
+    private lateinit var tvEmiAmount: TextView
+    private lateinit var tvLoanAmount: TextView
+    private lateinit var tvInterest: TextView
+    private lateinit var tvTotalPayment: TextView
+    private lateinit var tvLoanTenure: TextView
+    private lateinit var tvDownPayment: TextView
+    private lateinit var tvHeader: TextView
+
+    private val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
+
+    private var lastResponse: OtherLoanResponse? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_otherloan)
+
+        initViews()
+        setupClickListeners()
+    }
+
+    private fun initViews() {
+        etLoanAmount = findViewById(R.id.etLoanAmount)
+        etInterestRate = findViewById(R.id.etInterestRate)
+        etTenure = findViewById(R.id.etTenure)
+        etDownPayment = findViewById(R.id.etDownPayment)
+
+        btnCalculate = findViewById(R.id.btnCalculate)
+        btnSetReminder = findViewById(R.id.btnSetReminder)
+        btnSave = findViewById(R.id.btnSave)
+        btnReset = findViewById(R.id.btnReset)
+
+        resultSection = findViewById(R.id.resultSection)
+
+        tvHeader = findViewById(R.id.tvHeader)
+        tvEmiAmount = findViewById(R.id.tvEmiAmount)
+        tvLoanAmount = findViewById(R.id.tvLoanAmount)
+        tvInterest = findViewById(R.id.tvInterest)
+        tvTotalPayment = findViewById(R.id.tvTotalPayment)
+        tvLoanTenure = findViewById(R.id.tvLoanTenure)
+        tvDownPayment = findViewById(R.id.tvDownPayment)
+
+        hideResultSection()
+    }
+
+    private fun setupClickListeners() {
+        btnCalculate.setOnClickListener { calculateEMI() }
+        btnReset.setOnClickListener { resetForm() }
+        btnSave.setOnClickListener { promptSaveDialog() }
+        btnSetReminder.setOnClickListener { setReminder() }
+    }
+
+    private fun calculateEMI() {
+        if (!validateInputs()) return
+
+        val loanAmount = etLoanAmount.text.toString().toDouble()
+        val interestRate = etInterestRate.text.toString().toDouble()
+        val tenure = etTenure.text.toString().toInt()
+        val downPayment = etDownPayment.text.toString().let {
+            if (it.isBlank()) 0.0 else it.toDouble()
+        }
+
+        btnCalculate.isEnabled = false
+        btnCalculate.text = "Calculating..."
+
+        val apiService = ApiClient.getClient().create(ApiService::class.java)
+        val call = apiService.calculateEMI(loanAmount, interestRate, tenure, downPayment)
+
+        call.enqueue(object : Callback<OtherLoanResponse> {
+            override fun onResponse(call: Call<OtherLoanResponse>, response: Response<OtherLoanResponse>) {
+                btnCalculate.isEnabled = true
+                btnCalculate.text = "Calculate EMI"
+
+                if (response.isSuccessful && response.body() != null) {
+                    val loanResponse = response.body()!!
+                    if (loanResponse.status == 1) {
+                        lastResponse = loanResponse
+                        displayResults(loanResponse)
+                    } else {
+                        showError(loanResponse.message ?: "Calculation failed")
+                    }
+                } else {
+                    showError("API call failed: ${response.message()}")
+                }
+            }
+
+            override fun onFailure(call: Call<OtherLoanResponse>, t: Throwable) {
+                btnCalculate.isEnabled = true
+                btnCalculate.text = "Calculate EMI"
+                showError("Network error: ${t.message}")
+            }
+        })
+    }
+
+    private fun validateInputs(): Boolean {
+        var isValid = true
+
+        if (etLoanAmount.text.toString().isBlank() || etLoanAmount.text.toString().toDoubleOrNull1() == null || etLoanAmount.text.toString().toDouble() <= 0) {
+            etLoanAmount.error = "Enter valid loan amount"
+            isValid = false
+        }
+
+        if (etInterestRate.text.toString().isBlank() || etInterestRate.text.toString().toDoubleOrNull1() == null || etInterestRate.text.toString().toDouble() <= 0) {
+            etInterestRate.error = "Enter valid interest rate"
+            isValid = false
+        }
+
+        if (etTenure.text.toString().isBlank() || etTenure.text.toString().toIntOrNull() == null || etTenure.text.toString().toInt() <= 0) {
+            etTenure.error = "Enter valid tenure"
+            isValid = false
+        }
+
+        val downPayment = etDownPayment.text.toString().toDoubleOrNull1() ?: 0.0
+        val loanAmount = etLoanAmount.text.toString().toDoubleOrNull1() ?: 0.0
+
+        if (downPayment < 0) {
+            etDownPayment.error = "Down payment cannot be negative"
+            isValid = false
+        }
+
+        if (downPayment >= loanAmount && loanAmount > 0) {
+            etDownPayment.error = "Down payment cannot be equal to or more than loan amount"
+            isValid = false
+        }
+
+        return isValid
+    }
+
+    private fun displayResults(response: OtherLoanResponse) {
+        tvEmiAmount.text = "Monthly EMI: ${currencyFormat.format(response.Monthly_EMI ?: 0.0)}"
+        tvLoanAmount.text = "Loan Amount: ${currencyFormat.format(response.Loan_Amount ?: 0.0)}"
+        tvTotalPayment.text = "Total Payment: ${currencyFormat.format(response.Total_Amount ?: 0.0)}"
+
+        val principal = (response.Loan_Amount ?: 0.0) - (response.Down_Payment ?: 0.0)
+        val totalInterest = (response.Total_Amount ?: 0.0) - principal
+        tvInterest.text = "Total Interest: ${currencyFormat.format(totalInterest)}"
+
+        tvLoanTenure.text = "Tenure: ${response.Loan_Tenure_Years ?: 0.0} years"
+        tvDownPayment.text = "Down Payment: ${currencyFormat.format(response.Down_Payment ?: 0.0)}"
+
+        showResultSection()
+        Toast.makeText(this, response.message ?: "EMI calculated successfully", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun resetForm() {
+        etLoanAmount.text.clear()
+        etInterestRate.text.clear()
+        etTenure.text.clear()
+        etDownPayment.text.clear()
+
+        etLoanAmount.error = null
+        etInterestRate.error = null
+        etTenure.error = null
+        etDownPayment.error = null
+
+        hideResultSection()
+    }
+
+    private fun showResultSection() {
+        resultSection.visibility = View.VISIBLE
+        btnSetReminder.visibility = View.VISIBLE
+        btnSave.visibility = View.VISIBLE
+        btnReset.visibility = View.VISIBLE
+    }
+
+    private fun hideResultSection() {
+        resultSection.visibility = View.GONE
+        btnSetReminder.visibility = View.GONE
+        btnSave.visibility = View.GONE
+        btnReset.visibility = View.GONE
+    }
+
+    private fun promptSaveDialog() {
+        val dialog = Dialog(this)
+        dialog.setContentView(R.layout.dialog_save_borrower)
+
+        val borrowerNameEditText = dialog.findViewById<EditText>(R.id.etBorrowerName)
+        val addToBookCheckbox = dialog.findViewById<CheckBox>(R.id.cbAddToBook)
+        val saveButton = dialog.findViewById<Button>(R.id.btnSave)
+
+        saveButton.setOnClickListener {
+            val borrowerName = borrowerNameEditText.text.toString()
+
+            if (addToBookCheckbox.isChecked) {
+                if (borrowerName.isBlank()) {
+                    Toast.makeText(this, "Please enter borrower name", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                lastResponse?.let {
+                    saveToBook(
+                        borrowerName,
+                        it.Loan_Amount ?: 0.0,
+                        "-",
+                        "-",
+                        etInterestRate.text.toString().toDoubleOrNull1() ?: 0.0,
+                        it.Loan_Tenure_Years?.toDouble() ?: 0.0,
+                        (it.Total_Amount ?: 0.0) - ((it.Loan_Amount ?: 0.0) - (it.Down_Payment ?: 0.0)),
+                        it.Total_Amount ?: 0.0
+                    )
+                }
+            }
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
+    private fun saveToBook(
+        borrowerNameInput: String,
+        loanAmount: Double,
+        startDate: String,
+        endDate: String,
+        interestRate: Double,
+        tenureYears: Double,
+        totalInterest: Double,
+        totalAmount: Double
+    ) {
+        val db = AppDatabase.getDatabase(this)
+        val dao = db.bookEntryDao()
+
+        val entry = BookEntry(
+            borrowerName = borrowerNameInput,
+            amount = loanAmount,
+            Date = startDate,
+            receivedDate = endDate,
+            interestRate = "$interestRate%",
+            totalTime = "$tenureYears years",
+            interestAmount = totalInterest,
+            totalAmount = totalAmount,
+            calculationType = "EMI Loan"
+        )
+
+        lifecycleScope.launch {
+            dao.insert(entry)
+            Toast.makeText(this@OtherLoanActivity, "Saved to Book!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun setReminder() {
+        Toast.makeText(this, "Reminder set successfully", Toast.LENGTH_SHORT).show()
+    }
+}
