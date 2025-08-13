@@ -1,0 +1,244 @@
+package com.saveetha.interest
+
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.util.Log
+import android.view.*
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.saveetha.interest.adapter.BookAdapter
+import com.saveetha.interest.data.AppDatabase
+import com.saveetha.interest.models.BookEntry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class BookFragment : Fragment() {
+
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var adapter: BookAdapter
+    private lateinit var emptyMessage: TextView
+    private lateinit var searchEditText: EditText
+    private var originalList: List<BookEntry> = emptyList()
+
+    companion object {
+        private const val EDIT_REQUEST_CODE = 100
+        private const val TAG = "BookFragment"
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return inflater.inflate(R.layout.fragment_book, container, false)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        initializeViews(view)
+        setupAdapter()
+        setupRecyclerView()
+        loadBookEntries()
+        setupSearchFunctionality()
+    }
+
+    private fun initializeViews(view: View) {
+        recyclerView = view.findViewById(R.id.recyclerViewBook)
+        emptyMessage = view.findViewById(R.id.tvEmptyMessage)
+        searchEditText = view.findViewById(R.id.etSearch)
+    }
+
+    private fun setupAdapter() {
+        adapter = BookAdapter(
+            emptyList(),
+            onEdit = { entry -> editEntry(entry) },
+            onDelete = { entry -> deleteEntry(entry) },
+            onShare = { entry -> shareEntry(entry) }
+        )
+    }
+
+    private fun setupRecyclerView() {
+        recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        recyclerView.adapter = adapter
+    }
+
+    private fun setupSearchFunctionality() {
+        searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                val filteredList = originalList.filter {
+                    it.borrowerName.contains(s.toString(), ignoreCase = true)
+                }
+                adapter.updateList(filteredList)
+                updateEmptyMessageVisibility(filteredList)
+            }
+
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+    }
+
+    private fun updateEmptyMessageVisibility(list: List<BookEntry>) {
+        if (list.isEmpty()) {
+            emptyMessage.visibility = View.VISIBLE
+            recyclerView.visibility = View.GONE
+        } else {
+            emptyMessage.visibility = View.GONE
+            recyclerView.visibility = View.VISIBLE
+        }
+    }
+
+    private fun loadBookEntries() {
+        lifecycleScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(requireContext())
+
+                val entries = withContext(Dispatchers.IO) {
+                    db.bookEntryDao().getAll()
+                }
+
+                Log.d(TAG, "Loaded ${entries.size} entries from database")
+                entries.forEach { entry ->
+                    Log.d(TAG, "Entry: ID=${entry.id}, Name=${entry.borrowerName}")
+                }
+
+                originalList = entries
+                adapter.updateList(entries)
+                updateEmptyMessageVisibility(entries)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading book entries", e)
+                Toast.makeText(requireContext(), "Error loading book entries: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+//    private fun editEntry(entry: BookEntry) {
+//        // Add logging to see the entry details
+//        Log.d(TAG, "Editing entry: ID=${entry.id}, Name=${entry.borrowerName}")
+//
+//        val intent = Intent(requireContext(), SimpleInterestActivity::class.java)
+//
+//        // Pass all the entry data as extras
+//        intent.putExtra("EDIT_MODE", true)
+//        intent.putExtra("ENTRY_ID", entry.id)
+//        intent.putExtra("BORROWER_NAME", entry.borrowerName)
+//        intent.putExtra("AMOUNT", entry.amount)
+//        intent.putExtra("START_DATE", entry.Date)
+//        intent.putExtra("END_DATE", entry.receivedDate)
+//        intent.putExtra("INTEREST_RATE", entry.interestRate.toDoubleOrNull() ?: 0.0)
+//        intent.putExtra("TOTAL_TIME", entry.totalTime)
+//        intent.putExtra("INTEREST_AMOUNT", entry.interestAmount)
+//        intent.putExtra("TOTAL_AMOUNT", entry.totalAmount)
+//
+//        Log.d(TAG, "Starting SimpleInterestActivity with entry ID: ${entry.id}")
+//        startActivityForResult(intent, EDIT_REQUEST_CODE)
+//    }
+private fun editEntry(entry: BookEntry) {
+    Log.d(TAG, "Editing entry: ID=${entry.id}, Name=${entry.borrowerName}, Type=${entry.calculationType}")
+
+    val intent = when (entry.calculationType) {
+        "Simple Interest" -> Intent(requireContext(), SimpleInterestActivity::class.java)
+        "Compound Interest" -> Intent(requireContext(), CompoundInterestActivity::class.java)
+        "Home Loan" -> Intent(requireContext(), HomeLoanActivity::class.java)
+        "Car Loan" -> Intent(requireContext(), CarLoanActivity::class.java)
+        else -> {
+            Toast.makeText(requireContext(), "Unsupported type: ${entry.calculationType}", Toast.LENGTH_SHORT).show()
+            return
+        }
+    }
+
+    intent.putExtra("EDIT_MODE", true)
+    intent.putExtra("ENTRY_ID", entry.id)
+    intent.putExtra("BORROWER_NAME", entry.borrowerName)
+    intent.putExtra("AMOUNT", entry.amount)
+    intent.putExtra("START_DATE", entry.Date)
+    intent.putExtra("END_DATE", entry.receivedDate)
+    intent.putExtra("INTEREST_RATE", entry.interestRate.toDoubleOrNull() ?: 0.0)
+    intent.putExtra("TOTAL_TIME", entry.totalTime)
+    intent.putExtra("INTEREST_AMOUNT", entry.interestAmount)
+    intent.putExtra("TOTAL_AMOUNT", entry.totalAmount)
+    intent.putExtra("CALCULATION_TYPE", entry.calculationType)
+
+    Log.d(TAG, "Starting ${entry.calculationType} Activity with entry ID: ${entry.id}")
+    startActivityForResult(intent, EDIT_REQUEST_CODE)
+}
+
+    private fun deleteEntry(entry: BookEntry) {
+        lifecycleScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(requireContext())
+                withContext(Dispatchers.IO) {
+                    db.bookEntryDao().delete(entry)
+                }
+
+                Log.d(TAG, "Deleted entry: ID=${entry.id}, Name=${entry.borrowerName}")
+                loadBookEntries() // Refresh the list
+                Toast.makeText(requireContext(), "Deleted ${entry.borrowerName}", Toast.LENGTH_SHORT).show()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting entry", e)
+                Toast.makeText(requireContext(), "Error deleting entry: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun shareEntry(entry: BookEntry) {
+        val shareText = """
+            Borrower: ${entry.borrowerName}
+            Amount: ₹${entry.amount}
+            From: ${entry.Date} To: ${entry.receivedDate}
+            Interest Rate: ${entry.interestRate}%
+            Time Period: ${entry.totalTime}
+            Interest: ₹${entry.interestAmount}
+            Total Amount: ₹${entry.totalAmount}
+        """.trimIndent()
+
+        val intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, shareText)
+            type = "text/plain"
+        }
+
+        try {
+            startActivity(Intent.createChooser(intent, "Share via"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sharing entry", e)
+            Toast.makeText(requireContext(), "Error sharing entry", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        Log.d(TAG, "onActivityResult: requestCode=$requestCode, resultCode=$resultCode")
+
+        if (requestCode == EDIT_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            // Refresh the book entries list
+            Log.d(TAG, "Edit completed successfully, refreshing list")
+            loadBookEntries()
+            Toast.makeText(requireContext(), "Entry updated successfully!", Toast.LENGTH_SHORT).show()
+        } else if (requestCode == EDIT_REQUEST_CODE) {
+            Log.d(TAG, "Edit cancelled or failed")
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh the list when returning to this fragment
+        // This handles cases where the activity result might not work properly
+        loadBookEntries()
+    }
+
+    // Public method to refresh the list (can be called from parent activity)
+    fun refreshBookEntries() {
+        loadBookEntries()
+    }
+}
