@@ -1,0 +1,196 @@
+package com.saveetha.interest
+
+import android.annotation.SuppressLint
+import android.app.Dialog
+import android.graphics.Color
+import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
+import android.view.LayoutInflater
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import com.saveetha.interest.models.CarLoanResponse
+import com.saveetha.interest.network.ApiClient
+import com.saveetha.interest.network.ApiService
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+
+class CarLoanActivity : AppCompatActivity() {
+
+    private lateinit var etLoanAmount: EditText
+    private lateinit var etInterestRate: EditText
+    private lateinit var etDownPayment: EditText
+    private lateinit var seekLoanTerm: SeekBar
+    private lateinit var tvLoanTermValue: TextView
+    private lateinit var tvResult: TextView
+    private lateinit var btnCalculate: Button
+    private lateinit var btnSave: Button
+    private lateinit var btnReminder: Button
+    private lateinit var btnReset: Button
+
+    private var loanTerm = 10 // Default loan term
+
+    @SuppressLint("MissingInflatedId")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_carloan)
+
+        // UI Initialization
+        etLoanAmount = findViewById(R.id.etLoanAmount)
+        etInterestRate = findViewById(R.id.etInterestRate)
+        etDownPayment = findViewById(R.id.etDownPayment)
+        seekLoanTerm = findViewById(R.id.seekLoanTerm)
+        tvLoanTermValue = findViewById(R.id.tvLoanTermValue)
+        tvResult = findViewById(R.id.tvResult)
+        btnCalculate = findViewById(R.id.btnCalculate)
+        btnSave = findViewById(R.id.btnSave)
+        btnReminder = findViewById(R.id.btnSetReminder)
+        btnReset = findViewById(R.id.btnReset)
+
+        // SeekBar listener
+        seekLoanTerm.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                loanTerm = progress + 1
+                tvLoanTermValue.text = "$loanTerm Years"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        btnCalculate.setOnClickListener {
+            calculateCarLoan()
+        }
+
+        btnSave.setOnClickListener {
+            showSaveDialog()
+        }
+
+        btnReminder.setOnClickListener {
+            Toast.makeText(this, "Reminder set (to be implemented)", Toast.LENGTH_SHORT).show()
+        }
+
+        btnReset.setOnClickListener {
+            resetInputs()
+        }
+    }
+
+    private fun calculateCarLoan() {
+        val loanAmountStr = etLoanAmount.text.toString().trim()
+        val interestRateStr = etInterestRate.text.toString().trim()
+        val downPaymentStr = etDownPayment.text.toString().trim()
+
+        if (loanAmountStr.isEmpty() || interestRateStr.isEmpty()) {
+            Toast.makeText(this, "Please enter all required fields", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val loanAmount = loanAmountStr.toDouble()
+        val interestRate = interestRateStr.toDouble()
+        val downPayment = if (downPaymentStr.isEmpty()) 0.0 else downPaymentStr.toDouble()
+
+        val apiService = ApiClient.getClient().create(ApiService::class.java)
+        val call = apiService.calculateCarLoan(
+            loanAmount = loanAmount,
+            interestRate = interestRate,
+            loanTenure = loanTerm,
+            downPayment = downPayment
+        )
+
+        call.enqueue(object : Callback<CarLoanResponse> {
+            override fun onResponse(
+                call: Call<CarLoanResponse>,
+                response: Response<CarLoanResponse>
+            ) {
+                if (response.isSuccessful && response.body() != null) {
+                    val result = response.body()!!
+                    displayLoanResult(result)
+                } else {
+                    tvResult.text = "Server Error: ${response.message()}"
+                }
+            }
+
+            override fun onFailure(call: Call<CarLoanResponse>, t: Throwable) {
+                tvResult.text = "Error: ${t.localizedMessage}"
+            }
+        })
+    }
+
+    private fun displayLoanResult(response: CarLoanResponse) {
+        val resultBuilder = SpannableStringBuilder()
+
+        fun appendColoredLine(label: String, value: String) {
+            val labelColor = Color.parseColor("#1E293B")
+            val valueColor = Color.parseColor("#16A34A")
+
+            val start = resultBuilder.length
+            resultBuilder.append("$label: ")
+            resultBuilder.setSpan(
+                ForegroundColorSpan(labelColor),
+                start,
+                resultBuilder.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+
+            val valueStart = resultBuilder.length
+            resultBuilder.append("$value\n\n")
+            resultBuilder.setSpan(
+                ForegroundColorSpan(valueColor),
+                valueStart,
+                resultBuilder.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+
+        appendColoredLine("Loan Amount", "₹${response.Loan_Amount}")
+        appendColoredLine("Down Payment", "₹${response.Down_Payment}")
+        appendColoredLine("Monthly EMI", "₹${response.Monthly_EMI}")
+        appendColoredLine("Total Interest", "₹${response.Total_Interest}")
+        appendColoredLine("Total Payment", "₹${response.Total_Payment}")
+        appendColoredLine("Loan Term", "${response.Loan_Term} years")
+
+
+        tvResult.text = resultBuilder
+    }
+
+    private fun resetInputs() {
+        etLoanAmount.text.clear()
+        etInterestRate.text.clear()
+        etDownPayment.text.clear()
+        seekLoanTerm.progress = 9 // 10 years
+        tvLoanTermValue.text = "10 Years"
+        tvResult.text = ""
+    }
+
+    private fun showSaveDialog() {
+        val dialog = Dialog(this)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_save_borrower, null)
+        dialog.setContentView(view)
+
+        val etBorrowerName = view.findViewById<EditText>(R.id.etBorrowerName)
+        val cbAddToBook = view.findViewById<CheckBox>(R.id.cbAddToBook)
+        val btnSaveNow = view.findViewById<Button>(R.id.btnSave)
+
+        btnSaveNow.setOnClickListener {
+            val name = etBorrowerName.text.toString().trim()
+            val addToBook = cbAddToBook.isChecked
+
+            if (name.isEmpty()) {
+                Toast.makeText(this, "Please enter borrower name", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // You can add DB logic here to persist data
+            Toast.makeText(this, "Saved for $name (Add to book: $addToBook)", Toast.LENGTH_LONG).show()
+            dialog.dismiss()
+        }
+
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85).toInt(),
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        dialog.show()
+    }
+}
