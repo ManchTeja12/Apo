@@ -1,0 +1,13 @@
+package com.saveetha.interest.models
+
+data class SimpleInterestResponse(
+    val status: Int,
+    val simple_interest: Double,
+    val Interest_Rate: Double,
+    val Total_Years: Double,
+    val Total_Amount: Double,
+    val From_Date: String,
+    val To_Date: String,
+    val Time_Period: String,
+    val message: String? = null
+)
